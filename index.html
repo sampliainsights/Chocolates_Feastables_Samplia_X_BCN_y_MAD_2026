@@ -2855,9 +2855,18 @@
       letter-spacing: -.035em;
     }
 
-    /* Tres KPI: una fila en escritorio y tablet, apilados en móvil. */
+    /* Cuatro KPI: una fila en escritorio y tablet, apilados en móvil. */
     .kpis {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    /* Columnas más estrechas que con tres KPI: menos hueco entre cifra y gráfico. */
+    .kpis .kpi {
+      gap: 32px;
+    }
+
+    .kpis .kpi:first-child {
+      gap: 28px;
     }
 
     .kpis .kpi:nth-child(n) {
@@ -2886,9 +2895,9 @@
       }
     }
 
-    /* El PDF siempre lleva los tres KPI en una fila, sea cual sea la ventana. */
+    /* El PDF siempre lleva los cuatro KPI en una fila, sea cual sea la ventana. */
     body.pdf-mode .kpis {
-      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     }
 
     body.pdf-mode .kpis .kpi:nth-child(n) {
@@ -3220,10 +3229,11 @@
             clasificador de palabras clave (una respuesta puede nombrar varios). Las respuestas que no nombran ningún canal
             quedan fuera de su base.</li>
           <li>Recomendación: escala de 0 a 10. El índice NPS es el % de promotores (9-10) menos el % de detractores (0-6).</li>
-          <li>Benchmark chocolates: valoración de sabor de 7,7 sobre 10 y 55% de compradores potenciales. Las píldoras de
-            los KPI muestran la diferencia relativa respecto a ese benchmark: (dato del informe ÷ benchmark − 1) × 100. Es
-            una diferencia en porcentaje del valor de referencia, no en puntos porcentuales. Verde (▲) indica por encima del
-            benchmark y rojo (▼) por debajo.</li>
+          <li>Benchmark chocolates: valoración de sabor de 7,46 sobre 10, 26% de compradores potenciales y un NPS de 8,4. Las
+            píldoras de valoración de sabor y comprarían muestran la diferencia relativa respecto a ese benchmark: (dato del
+            informe ÷ benchmark − 1) × 100. Es una diferencia en porcentaje del valor de referencia, no en puntos
+            porcentuales. La píldora de NPS muestra la diferencia en puntos del índice (dato del informe − benchmark).
+            Verde (▲) indica por encima del benchmark y rojo (▼) por debajo.</li>
           <li>Los filtros de género, edad y ubicación recalculan todos los indicadores del informe, incluidos los KPI de
             cabecera y las lecturas de negocio.</li>
         </ul>
@@ -3584,9 +3594,10 @@
     const NO_LABELS = ['No compradores'];
     const KPI_CONOCE = ['Soy comprador habitual', 'Los había comprado alguna vez', 'Los conocía, pero no los había probado'];
     const KPI_COMPRADO = ['Soy comprador habitual', 'Los había comprado alguna vez'];
-    /* Benchmark chocolates: valoración de sabor (escala 1-10) y % de compradores potenciales. */
-    const BENCH_SABOR = 7.7;
-    const BENCH_CP = 55;
+    /* Benchmark chocolates: valoración de sabor (escala 1-10), % de compradores potenciales y NPS. */
+    const BENCH_SABOR = 7.46;
+    const BENCH_CP = 26;
+    const BENCH_NPS = 8.4;
     const BENCH_TXT = 'chocolates';
 
     const Q = {
@@ -4522,6 +4533,30 @@
         + '<div class="kpi-donut-legs">' + legs + '</div></div>';
     }
 
+    /* Mini-donut NPS: reparto de detractores, pasivos y promotores. */
+    function npsDonut(r) {
+      if (!r.st.n) return '';
+      const R = 18, SZ = 48, CX = SZ / 2, CY = SZ / 2, SW = 6;
+      const circ = 2 * Math.PI * R;
+      let cum = 0;
+      const arcs = NPS_G.map(x => {
+        const len = (r.g[x.k] / r.st.n) * circ;
+        const arc = '<circle cx="' + CX + '" cy="' + CY + '" r="' + R
+          + '" fill="none" stroke="' + x.c
+          + '" stroke-width="' + SW
+          + '" stroke-dasharray="' + len.toFixed(2) + ' ' + (circ - len).toFixed(2)
+          + '" stroke-dashoffset="' + (-cum).toFixed(2) + '" />';
+        cum += len;
+        return arc;
+      });
+      const legs = NPS_G.map(x => '<div class="kpi-donut-leg"><i style="background:' + x.c + '"></i>'
+        + x.t + ' <b>' + pf(r.p(x.k), 0) + '</b></div>').join('');
+      return '<div class="kpi-donut">'
+        + '<svg width="' + SZ + '" height="' + SZ + '" viewBox="0 0 ' + SZ + ' ' + SZ
+        + '" style="transform:rotate(-90deg)">' + arcs.join('') + '</svg>'
+        + '<div class="kpi-donut-legs">' + legs + '</div></div>';
+    }
+
     function saborBars() {
       const MNAMES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
       const ci = IX[Q.q3.col];
@@ -4622,6 +4657,7 @@
     function renderKPIs() {
       const sabor = scaleStats(VIEW, Q.q3.col, 0, 10);
       const cp = countAny(VIEW, Q.q5.col, CP_LABELS);
+      const nps = npsOf(VIEW);
       const kpi = (v, u, l, note, extra, chart) => `<div class="kpi">
         <div class="kpi-body">
           <div class="kpi-v">${v}${u ? `<span class="kpi-u">${u}</span>` : ''}</div>
@@ -4637,11 +4673,15 @@
           isFiltered() ? 'de ' + nf(ROWS.length) + ' en total' : 'muestra completa',
           '', locDonut()) +
         kpi(sabor.n ? df(sabor.mean, 2) : '—', sabor.n ? '/10' : '', 'Valoración de sabor',
-          'Nota media de 1 a 10 · ' + nf(sabor.n) + ' respuestas',
+          '',
           sabor.n ? bench(sabor.mean, BENCH_SABOR, df(BENCH_SABOR, 1)) : '', saborBars()) +
         kpi(cp.base ? pf(cp.pct, 0) : '—', '', 'Comprarían',
-          'Compradores potenciales · ' + nf(cp.hit) + ' de ' + nf(cp.base),
-          cp.base ? bench(cp.pct, BENCH_CP, pf(BENCH_CP, 0)) : '', cpBars());
+          '',
+          cp.base ? bench(cp.pct, BENCH_CP, pf(BENCH_CP, 0)) : '', cpBars()) +
+        kpi(nps.st.n ? (nps.nps >= 0 ? '+' : '−') + df(Math.abs(nps.nps), 1) : '—', '', 'NPS',
+          '',
+          nps.st.n ? benchPill(nps.nps - BENCH_NPS, ' pts', (BENCH_NPS >= 0 ? '+' : '−') + df(Math.abs(BENCH_NPS), 1)) : '',
+          npsDonut(nps));
 
       /* Cierre: total de compradores potenciales de toda la muestra, sin filtros. */
       const ctaN = $('#cta-n');
